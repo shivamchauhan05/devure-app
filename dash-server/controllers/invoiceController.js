@@ -174,7 +174,7 @@ exports.deleteInvoice = async (req, res) => {
 };
 
 // Get invoice statistics
-exports.getInvoiceStats = async (req, res) => {
+/* exports.getInvoiceStats = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     let match = { user: req.user.id };
@@ -186,7 +186,7 @@ exports.getInvoiceStats = async (req, res) => {
       };
     }
     
-    const stats = await Invoice.aggregate([
+   const stats = await Invoice.aggregate([
       { $match: match },
       {
         $group: {
@@ -214,6 +214,71 @@ exports.getInvoiceStats = async (req, res) => {
       overdueInvoices: 0
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  } 
+ 
+
+} */
+exports.getInvoiceStats = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    console.log(startDate,endDate)
+    const mongoose = require('mongoose'); // Make sure to require mongoose
+    
+    let match = { user: new mongoose.Types.ObjectId(req.user.id) };
+    
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ error: 'Invalid date format' });
+      }
+      
+      end.setHours(23, 59, 59, 999);
+      match.date = {
+        $gte: start,
+        $lte: end
+      };
+    }
+    
+    const stats = await Invoice.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          totalInvoices: { $sum: 1 },
+          totalRevenue: { $sum: "$total_amount" },
+          paidInvoices: {
+            $sum: { $cond: [{ $eq: ["$status", "paid"] }, 1, 0] }
+          },
+          pendingInvoices: {
+            $sum: { $cond: [{ $eq: ["$status", "sent"] }, 1, 0] }
+          },
+          overdueInvoices: {
+            $sum: { $cond: [{ $eq: ["$status", "overdue"] }, 1, 0] }
+          },
+          draftInvoices: {
+            $sum: { $cond: [{ $eq: ["$status", "draft"] }, 1, 0] }
+          }
+        }
+      }
+    ]);
+    
+    // Enhanced response with all statuses
+    const result = stats[0] || {
+      totalInvoices: 0,
+      totalRevenue: 0,
+      paidInvoices: 0,
+      pendingInvoices: 0,
+      overdueInvoices: 0,
+      draftInvoices: 0
+    };
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('Invoice stats error:', error);
     res.status(500).json({ error: error.message });
   }
 };

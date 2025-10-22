@@ -6,8 +6,9 @@ const Product = require('../models/Product');
 // Get sales report
 exports.getSalesReport = async (req, res) => {
   try {
+    console.log("hello")
     const { startDate, endDate, groupBy } = req.query;
-    let match = { user: req.user.id, status: 'paid' };
+    let match = { user: req.user._id, status: 'paid' };
     
     if (startDate && endDate) {
       match.date = {
@@ -53,7 +54,7 @@ exports.getSalesReport = async (req, res) => {
 exports.getExpensesReport = async (req, res) => {
   try {
     const { startDate, endDate, groupBy } = req.query;
-    let match = { user: req.user.id };
+    let match = { user: req.user._id };
     
     if (startDate && endDate) {
       match.date = {
@@ -99,8 +100,8 @@ exports.getExpensesReport = async (req, res) => {
 exports.getProfitLossReport = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    let invoiceMatch = { user: req.user.id, status: 'paid' };
-    let expenseMatch = { user: req.user.id };
+    let invoiceMatch = { user: req.user._id, status: 'paid' };
+    let expenseMatch = { user: req.user._id };
     
     if (startDate && endDate) {
       const start = new Date(startDate);
@@ -139,14 +140,16 @@ exports.getProfitLossReport = async (req, res) => {
 // Get inventory report
 exports.getInventoryReport = async (req, res) => {
   try {
+     console.log("hello");
     const { lowStock } = req.query;
-    let match = { user: req.user.id };
+    let match = { user: req.user._id };
     
     if (lowStock === 'true') {
       match.$expr = { $lte: ["$stock", "$min_stock"] };
     }
     
     const inventoryReport = await Product.aggregate([
+      
       { $match: match },
       {
         $group: {
@@ -168,78 +171,230 @@ exports.getInventoryReport = async (req, res) => {
 };
 
 // Get dashboard overview
+
+
 exports.getDashboardOverview = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    let invoiceMatch = { user: req.user.id };
-    let expenseMatch = { user: req.user.id };
+    const userId = req.user._id;
     
+   
+    // Create base match with user
+    let invoiceMatch = { user: userId };
+    let expenseMatch = { user: userId };
+    
+    // Better date handling
     if (startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999); // End of day
       
-      invoiceMatch.date = { $gte: start, $lte: end };
-      expenseMatch.date = { $gte: start, $lte: end };
+      
+      // Try different date fields
+      invoiceMatch.$or = [
+        { date: { $gte: start, $lte: end } },
+        { createdAt: { $gte: start, $lte: end } },
+        { invoiceDate: { $gte: start, $lte: end } }
+      ].filter(Boolean);
     }
+    
     
     const [
       invoiceStats,
       expenseStats,
-      productStats
+      productStats,
+      allInvoices // Debug: get all invoices to see what exists
     ] = await Promise.all([
-      // Invoice statistics
+      // Invoice aggregation
       Invoice.aggregate([
         { $match: invoiceMatch },
         {
           $group: {
             _id: null,
-            totalRevenue: { $sum: "$total_amount" },
+            totalRevenue: { $sum: { $ifNull: ["$total_amount", 0] } },
             invoiceCount: { $sum: 1 },
             paidInvoices: {
-              $sum: { $cond: [{ $eq: ["$status", "paid"] }, 1, 0] }
+              $sum: { 
+                $cond: [
+                  { $in: ["$status", ["paid", "completed", "success"]] }, 
+                  1, 
+                  0 
+                ]
+              }
             },
             pendingInvoices: {
-              $sum: { $cond: [{ $eq: ["$status", "sent"] }, 1, 0] }
+              $sum: { 
+                $cond: [
+                  { $in: ["$status", ["sent", "pending", "unpaid", "due"]] }, 
+                  1, 
+                  0 
+                ]
+              }
             }
           }
         }
       ]),
-      // Expense statistics
+      
+      // Expense aggregation
       Expense.aggregate([
         { $match: expenseMatch },
         {
           $group: {
             _id: null,
-            totalExpenses: { $sum: "$amount" },
+            totalExpenses: { $sum: { $ifNull: ["$amount", 0] } },
             expenseCount: { $sum: 1 }
           }
         }
       ]),
-      // Product statistics
+      
+      // Product aggregation
       Product.aggregate([
-        { $match: { user: req.user.id } },
+        { $match: { user: userId } },
         {
           $group: {
             _id: null,
             totalProducts: { $sum: 1 },
             lowStockItems: {
-              $sum: { $cond: [{ $lte: ["$stock", "$min_stock"] }, 1, 0] }
+              $sum: { 
+                $cond: [
+                  { 
+                    $and: [
+                      { $ifNull: ["$stock", 0] }, 
+                      { $ifNull: ["$min_stock", 0] },
+                      { $lte: ["$stock", "$min_stock"] }
+                    ]
+                  }, 
+                  1, 
+                  0 
+                ]
+              }
+            },
+            outOfStockItems: {
+              $sum: { 
+                $cond: [
+                  { $lte: [{ $ifNull: ["$stock", 0] }, 0] }, 
+                  1, 
+                  0 
+                ]
+              }
+            },
+            totalInventoryValue: {
+              $sum: {
+                $multiply: [
+                  { $ifNull: ["$stock", 0] },
+                  { $ifNull: ["$price", 0] }
+                ]
+              }
             }
           }
         }
-      ])
+      ]),
+      
+      // Debug: Get all invoices to see what we have
+      Invoice.find({ user: userId })
     ]);
     
-    res.json({
-      revenue: invoiceStats[0]?.totalRevenue || 0,
-      expenses: expenseStats[0]?.totalExpenses || 0,
-      invoices: invoiceStats[0]?.invoiceCount || 0,
-      paidInvoices: invoiceStats[0]?.paidInvoices || 0,
-      pendingInvoices: invoiceStats[0]?.pendingInvoices || 0,
-      products: productStats[0]?.totalProducts || 0,
-      lowStockItems: productStats[0]?.lowStockItems || 0
-    });
+    
+    
+    
+    const invoiceData = invoiceStats[0] || {};
+    const expenseData = expenseStats[0] || {};
+    const productData = productStats[0] || {};
+    
+    const response = {
+      revenue: invoiceData.totalRevenue || 0,
+      expenses: expenseData.totalExpenses || 0,
+      invoices: invoiceData.invoiceCount || 0,
+      paidInvoices: invoiceData.paidInvoices || 0,
+      pendingInvoices: invoiceData.pendingInvoices || 0,
+      products: productData.totalProducts || 0,
+      lowStockItems: productData.lowStockItems || 0,
+      outOfStockItems: productData.outOfStockItems || 0,
+      inventoryValue: productData.totalInventoryValue || 0
+    };
+    
+    res.json(response);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+// Revenue chart data
+exports.getRevenueTrend = async (req, res) => {
+  try {
+    const { startDate, endDate, period = 'monthly' } = req.query;
+    const userId = req.user._id;
+
+    console.log('Revenue Trend Request:', { startDate, endDate, period, user: userId });
+
+    // Default date range - last 12 months
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate ? new Date(startDate) : new Date();
+    start.setMonth(start.getMonth() - 11); // Last 12 months
+
+    let match = { 
+      user: userId, 
+      status: 'paid',
+      date: { $gte: start, $lte: end }
+    };
+
+    // Aggregation for monthly revenue trend
+    const revenueData = await Invoice.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$date" },
+            month: { $month: "$date" }
+          },
+          revenue: { $sum: "$total_amount" },
+          salesCount: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1 } }
+    ]);
+
+    console.log('Raw Revenue Data:', revenueData);
+
+    // Format data for chart
+    const months = [];
+    const revenue = [];
+    const sales = [];
+
+    // Generate last 12 months labels
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    for (let i = 0; i < 12; i++) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (11 - i));
+      
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const monthLabel = `${monthNames[date.getMonth()]} ${year.toString().slice(2)}`;
+      
+      months.push(monthLabel);
+
+      // Find matching revenue data
+      const monthData = revenueData.find(item => 
+        item._id.year === year && item._id.month === month
+      );
+
+      revenue.push(monthData ? monthData.revenue : 0);
+      sales.push(monthData ? monthData.salesCount : 0);
+    }
+
+    const response = {
+      months,
+      revenue,
+      sales,
+      totalRevenue: revenue.reduce((sum, val) => sum + val, 0),
+      totalSales: sales.reduce((sum, val) => sum + val, 0)
+    };
+
+    console.log('Formatted Revenue Trend:', response);
+    res.json(response);
+
+  } catch (error) {
+    console.error('Revenue Trend Error:', error);
     res.status(500).json({ error: error.message });
   }
 };

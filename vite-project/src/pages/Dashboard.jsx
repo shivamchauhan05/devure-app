@@ -5,7 +5,7 @@ import RecentTransactions from '../components/RecentTransactions';
 import InventoryAlerts from '../components/InventoryAlerts';
 import RevenueChart from '../components/RevenueChart';
 import SalesMap from '../components/SalesMap';
-import { reportsAPI, invoicesAPI } from '../services/api';
+import { reportsAPI, invoicesAPI, customersAPI } from '../services/api';
 
 const Dashboard = () => {
   const [dashboardData, setDashboardData] = useState({
@@ -25,6 +25,8 @@ const Dashboard = () => {
         // Fetch dashboard overview data
         const response = await reportsAPI.getDashboardOverview();
         const data = response.data;
+        const response2 = await customersAPI.getAll()
+        
         
         // Calculate growth percentages (you might want to store previous values in your database)
         const revenueGrowth = data.revenue > 0 ? 12.5 : 0; // Example growth calculation
@@ -48,7 +50,7 @@ const Dashboard = () => {
             growth: 8.7 // Example growth
           },
           customers: { 
-            current: data.customers || 0, 
+            current: response2.data.total || 0, 
             target: 1500, 
             growth: 5.2 // Example growth
           }

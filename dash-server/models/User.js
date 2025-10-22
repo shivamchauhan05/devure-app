@@ -21,7 +21,31 @@ const userSchema = new mongoose.Schema({
   business_name: {
     type: String,
     default: ''
-  }
+  },
+   address: {
+    type: String,
+    trim: true
+  },
+  city: {
+    type: String,
+    trim: true
+  },
+  state: {
+    type: String,
+    trim: true
+  },
+  zip_code: {
+    type: String,
+    trim: true
+  },
+  country: {
+    type: String,
+    default: 'India'
+  },
+    phone: {
+    type: String,
+    trim: true
+  },
 }, {
   timestamps: true
 });

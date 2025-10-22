@@ -69,6 +69,7 @@ exports.createProduct = async (req, res) => {
       stock: stock || 0,
       min_stock: min_stock || 10
     });
+    console.log(product)
     
     const savedProduct = await product.save();
     res.status(201).json(savedProduct);
@@ -142,8 +143,9 @@ exports.updateProductStock = async (req, res) => {
 };
 
 // Get inventory statistics
-exports.getInventoryStats = async (req, res) => {
+/* exports.getInventoryStats = async (req, res) => {
   try {
+    console.log("hello")
     const stats = await Product.aggregate([
       { $match: { user: req.user.id } },
       {
@@ -172,6 +174,7 @@ exports.getInventoryStats = async (req, res) => {
           count: { $sum: 1 }
         }
       },
+    
       {
         $group: {
           _id: null,
@@ -179,6 +182,7 @@ exports.getInventoryStats = async (req, res) => {
           totalInventoryValue: { $first: "$totalInventoryValue" },
           lowStockItems: { $first: "$lowStockItems" },
           outOfStockItems: { $first: "$outOfStockItems" },
+          
           byCategory: { 
             $push: { 
               category: "$_id", 
@@ -197,17 +201,122 @@ exports.getInventoryStats = async (req, res) => {
       outOfStockItems: 0,
       byCategory: []
     });
+      console.log("hello2")
+    
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
-
+*/
 // Get product categories
 exports.getProductCategories = async (req, res) => {
   try {
     const categories = await Product.distinct('category', { user: req.user.id });
     res.json(categories.filter(cat => cat !== ''));
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getInventoryStats = async (req, res) => {
+  try {
+   
+    
+    // Check 1: Saare products dekhte hain
+    const allProducts = await Product.find({});
+    
+    // Check 2: User ke products
+    const userProducts = await Product.find({ user: req.user.id });
+    
+    // Check 3: User ID ko ObjectId mein convert karke try karein
+    const mongoose = require('mongoose');
+    const userObjectId = new mongoose.Types.ObjectId(req.user.id);
+    const userProductsWithObjectId = await Product.find({ user: userObjectId });
+    
+    // Check 4: Kya koi bhi product mein user field hai?
+   /* if (allProducts.length > 0) {
+      allProducts.slice(0, 3).forEach((product, index) => {
+        console.log(`Product ${index + 1}:`, {
+          _id: product._id,
+          user: product.user,
+          userType: typeof product.user,
+          userString: product.user.toString(),
+          name: product.name
+        });
+      });
+    }*/
+    
+    // Check 5: Kya user ID same format mein hai?
+    if (allProducts.length > 0 && userProducts.length === 0) {
+      
+      const sampleProduct = allProducts[0];
+      
+    }
+    
+    
+
+    // Temporary: Saare products show kardo for testing
+    const products = await Product.find({});
+    
+    if (products.length === 0) {
+      return res.json({
+        totalProducts: 0,
+        totalInventoryValue: 0,
+        lowStockItems: 0,
+        outOfStockItems: 0,
+        byCategory: [],
+        message: "No products found in entire database"
+      });
+    }
+
+    // Calculate stats from all products (temporary)
+    const totalProducts = products.length;
+    const totalInventoryValue = products.reduce((sum, product) => 
+      sum + (product.price * product.stock), 0);
+    
+    const lowStockItems = products.filter(product => 
+      product.stock <= product.min_stock && product.stock > 0
+    ).length;
+    
+    const outOfStockItems = products.filter(product => 
+      product.stock === 0
+    ).length;
+
+    // Category breakdown
+    const categoryMap = {};
+    products.forEach(product => {
+      const category = product.category || 'Uncategorized';
+      if (!categoryMap[category]) {
+        categoryMap[category] = { total: 0, count: 0 };
+      }
+      categoryMap[category].total += product.price * product.stock;
+      categoryMap[category].count += 1;
+    });
+
+    const byCategory = Object.keys(categoryMap).map(category => ({
+      category,
+      total: categoryMap[category].total,
+      count: categoryMap[category].count
+    }));
+
+    const result = {
+      totalProducts,
+      totalInventoryValue,
+      lowStockItems,
+      outOfStockItems,
+      byCategory,
+      debugInfo: {
+        userFromToken: req.user.id,
+        totalProductsInDB: allProducts.length,
+        userProductsFound: userProducts.length,
+        usingAllProductsForDemo: true
+      }
+    };
+
+    res.json(result);
+    
+  } catch (error) {
+    console.error("Error in getInventoryStats:", error);
     res.status(500).json({ error: error.message });
   }
 };

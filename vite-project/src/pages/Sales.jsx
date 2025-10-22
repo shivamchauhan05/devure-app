@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { FiFilter, FiDownload, FiPrinter, FiSearch, FiEye, FiEdit, FiTrash2, FiTrendingUp, FiShoppingCart, FiUsers, FiDollarSign } from 'react-icons/fi';
 import { invoicesAPI, reportsAPI } from '../services/api';
+import SalesChart from '../components/SalesChart';
 
 const Sales = () => {
   const [activeFilter, setActiveFilter] = useState('all');
@@ -36,8 +37,9 @@ const Sales = () => {
         startDate: getStartDateForRange(dateRange),
         endDate: new Date().toISOString().split('T')[0]
       });
-      
+      console.log(response)
       const data = response.data;
+      console.log(data)
       setSalesData({
         totalSales: data.revenue || 0,
         totalTransactions: data.invoices || 0,
@@ -56,6 +58,7 @@ const Sales = () => {
         limit: 8,
         sort: 'date_desc'
       });
+      console.log(response.data)
       setInvoices(response.data.invoices || response.data);
     } catch (err) {
       setError('Failed to load recent transactions');
@@ -83,26 +86,82 @@ const Sales = () => {
   };
 
   const getStartDateForRange = (range) => {
-    const today = new Date();
-    switch (range) {
-      case 'today':
-        return today.toISOString().split('T')[0];
-      case 'week':
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
-        return weekStart.toISOString().split('T')[0];
-      case 'month':
-        return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-      case 'quarter':
-        const quarterStart = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
-        return quarterStart.toISOString().split('T')[0];
-      case 'year':
-        return new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
-      default:
-        return new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()).toISOString().split('T')[0];
-    }
-  };
+  const today = new Date();
+  
+  
+  switch (range) {
+    case 'Today':
+      const todayDate = today.toISOString().split('T')[0];
+      return todayDate;
+      
+    case 'This Week':
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay());
+      const weekStartDate = weekStart.toISOString().split('T')[0];
+      return weekStartDate;
+      
+    case 'This Month':
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+      return monthStart;
+      
+    case 'This Quarter':
+      const quarterStart = new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1);
+      const quarterStartDate = quarterStart.toISOString().split('T')[0];
+      return quarterStartDate;
+      
+    case 'This Year':
+      const yearStart = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
+      return yearStart;
+      
+    default:
+      const defaultDate = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate()).toISOString().split('T')[0];
+      return defaultDate;
+  }
+};
 
+// Fetch function mein bhi debug add karo
+const fetchReportData = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    
+    const startDate = getStartDateForRange(timeRange);
+    const endDate = new Date().toISOString().split('T')[0];
+    
+    
+    const params = { 
+      startDate,
+      endDate
+    };
+    
+    let response;
+    switch (activeReport) {
+      case 'sales':
+        response = await reportsAPI.getSalesReport(params);
+        break;
+      case 'expenses':
+        response = await reportsAPI.getExpensesReport(params);
+        break;
+      case 'profit':
+        response = await reportsAPI.getProfitLossReport(params);
+        break;
+      case 'inventory':
+        response = await reportsAPI.getInventoryReport(params);
+        break;
+      default:
+        response = await reportsAPI.getSalesReport(params);
+    }
+    
+    
+    const transformedData = transformReportData(response.data, activeReport);
+    setReportData(transformedData);
+    setLastUpdated(new Date());
+  } catch (err) {
+    setError('Failed to load report data. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -225,13 +284,10 @@ const Sales = () => {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Sales Trend</h3>
-          <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-            <p className="text-gray-500">Sales chart will be displayed here</p>
-          </div>
+          <div className="h-80 w-260 bg-gray-100 rounded-lg flex items-center justify-center mt-20 mb-20 ">
+             <SalesChart/>
         </div>
-        <div className="bg-white rounded-lg shadow p-6">
+      { /*  <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Top Products</h3>
           <div className="space-y-4">
             {topProducts.map((product, index) => (
@@ -247,7 +303,7 @@ const Sales = () => {
               </div>
             ))}
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Filters */}
@@ -309,7 +365,7 @@ const Sales = () => {
               {invoices.map((invoice) => (
                 <tr key={invoice.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{invoice.invoice_number}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{invoice.customer_name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{invoice.customer.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(invoice.date).toLocaleDateString()}
                   </td>

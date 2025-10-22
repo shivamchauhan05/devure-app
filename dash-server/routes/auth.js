@@ -4,7 +4,8 @@ const router = express.Router();
 const {
   register,
   login,
-  getCurrentUser
+  getCurrentUser,
+  updateProfile
 } = require('../controllers/authController');
 const {
   registerValidation,
@@ -16,5 +17,6 @@ const auth = require('../middleware/auth');
 router.post('/register', registerValidation, handleValidationErrors, register);
 router.post('/login', loginValidation, handleValidationErrors, login);
 router.get('/user', auth, getCurrentUser);
+router.put('/profile',auth,updateProfile)
 
 module.exports = router;

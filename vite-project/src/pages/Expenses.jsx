@@ -2,8 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { FiPlus, FiFilter, FiDownload, FiPrinter, FiSearch, FiEdit, FiTrash2, FiDollarSign } from 'react-icons/fi';
 import { expensesAPI } from '../services/api';
+import { Navigate, useNavigate } from 'react-router-dom'
+import AddExpense from '../forms/AddExpense';
 
 const Expenses = () => {
+       const navigate=useNavigate()
+  
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expenses, setExpenses] = useState([]);
@@ -15,7 +19,10 @@ const Expenses = () => {
     lastMonth: 0,
     budget: 50000
   });
-
+  
+  const handleAddpage = ()=>{
+    navigate('/addExpense')
+  }
   const filters = [
     { id: 'all', label: 'All Expenses' },
     { id: 'month', label: 'This Month' },
@@ -60,6 +67,7 @@ const Expenses = () => {
   const handleDeleteExpense = async (id) => {
     if (window.confirm('Are you sure you want to delete this expense?')) {
       try {
+        console.log(id)
         await expensesAPI.delete(id);
         setExpenses(expenses.filter(expense => expense.id !== id));
       } catch (err) {
@@ -93,7 +101,9 @@ const Expenses = () => {
             <FiPrinter className="mr-2" />
             Print
           </button>
-          <button className="flex items-center px-4 py-2 bg-primary border border-transparent rounded-md text-white hover:bg-secondary">
+          <button className="flex items-center px-4 py-2 bg-primary border border-transparent rounded-md text-white hover:bg-secondary bg-blue-600"
+          
+          onClick={()=> handleAddpage()}>
             <FiPlus className="mr-2" />
             Add Expense
           </button>
@@ -230,7 +240,7 @@ const Expenses = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredExpenses.map((expense) => (
                 <tr key={expense.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{expense.id}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{expense._id}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{expense.category}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{expense.description}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -244,7 +254,7 @@ const Expenses = () => {
                     </button>
                     <button 
                       className="text-red-600 hover:text-red-900"
-                      onClick={() => handleDeleteExpense(expense.id)}
+                      onClick={() => handleDeleteExpense(expense._id)}
                     >
                       <FiTrash2 className="inline mr-1" /> Delete
                     </button>

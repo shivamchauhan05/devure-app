@@ -6,7 +6,9 @@ const {
   getExpensesReport,
   getProfitLossReport,
   getInventoryReport,
-  getDashboardOverview
+  getDashboardOverview,
+   getRevenueTrend
+
 } = require('../controllers/reportController');
 const {
   reportQueryValidation,
@@ -20,5 +22,6 @@ router.get('/expenses', auth, reportQueryValidation, handleValidationErrors, get
 router.get('/profit-loss', auth, reportQueryValidation, handleValidationErrors, getProfitLossReport);
 router.get('/inventory', auth, getInventoryReport);
 router.get('/dashboard', auth, dashboardQueryValidation, handleValidationErrors, getDashboardOverview);
+router.get('/revenue-trend', auth, getRevenueTrend);
 
 module.exports = router;

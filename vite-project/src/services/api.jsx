@@ -75,6 +75,7 @@ export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
   register: (userData) => api.post('/auth/register', userData),
   getCurrentUser: () => api.get('/auth/user'),
+   updateProfile: (profileData) => api.put('/auth/profile', profileData),
 };
 
 // Customers API calls
@@ -115,7 +116,7 @@ export const inventoryAPI = {
   create: (product) => api.post('/inventory', product),
   update: (id, product) => api.put(`/inventory/${id}`, product),
   delete: (id) => api.delete(`/inventory/${id}`),
-  updateStock: (id, stock) => api.patch(`/inventory/${id}/stock`, { stock }),
+  updateStock: (id, stock) => api.patch(`/inventory/${id}/stock`,stock ),
   getStats: () => api.get('/inventory/stats/overview'),
   getCategories: () => api.get('/inventory/categories/list'),
 };
@@ -127,6 +128,8 @@ export const reportsAPI = {
   getProfitLossReport: (params) => api.get('/reports/profit-loss', { params }),
   getInventoryReport: (params) => api.get('/reports/inventory', { params }),
   getDashboardOverview: (params) => api.get('/reports/dashboard', { params }),
+  getRevenueTrend: (params) => api.get('/reports/revenue-trend', { params }),
+
 };
 
 // Settings API calls
@@ -136,4 +139,57 @@ export const settingsAPI = {
   updateSection: (section, data) => api.patch(`/settings/${section}`, data),
 };
 
+
+//export api calls
+export const exportAPI = {
+  exportSales: (params) => api.get('/export/sales', { 
+    params,
+    responseType: 'blob'
+  }),
+  exportExpenses: (params) => api.get('/export/expenses', { 
+    params,
+    responseType: 'blob'
+  }),
+  exportInventory: (params) => api.get('/export/inventory', { 
+    params,
+    responseType: 'blob'
+  }),
+  exportProfitLoss: (params) => api.get('/export/profit-loss', { 
+    params,
+    responseType: 'blob'
+  }),
+};
+
+// import api calls
+export const importAPI = {
+  importInvoices: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/import/invoices', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  
+  importExpenses: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/import/expenses', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  
+  importProducts: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/import/products', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  
+  downloadTemplate: (type) => {
+    return api.get(`/import/template/${type}`, {
+      responseType: 'blob'
+    });
+  }
+};
 export default api;

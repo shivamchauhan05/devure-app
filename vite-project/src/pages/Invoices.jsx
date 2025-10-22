@@ -1,14 +1,27 @@
 // pages/Invoices.js
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiFilter, FiDownload, FiPrinter, FiSearch, FiEye, FiEdit, FiTrash2 ,FiFileText,FiDollarSign} from 'react-icons/fi';
+import { FiPlus, FiFilter, FiDownload, FiPrinter, FiSearch, FiEye, FiEdit, FiTrash2, FiFileText, FiDollarSign, FiX, FiSave } from 'react-icons/fi';
 import { invoicesAPI } from '../services/api';
+import { Navigate, useNavigate } from 'react-router-dom';
 
 const Invoices = () => {
+  const navigate = useNavigate();
+  
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [viewingInvoice, setViewingInvoice] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    customer_name: '',
+    date: '',
+    due_date: '',
+    total_amount: '',
+    status: 'pending'
+  });
+
   const [stats, setStats] = useState({
     totalInvoices: 0,
     paid: 0,
@@ -22,6 +35,12 @@ const Invoices = () => {
     { id: 'paid', label: 'Paid' },
     { id: 'pending', label: 'Pending' },
     { id: 'overdue', label: 'Overdue' }
+  ];
+
+  const statusOptions = [
+    { value: 'pending', label: 'Pending' },
+    { value: 'paid', label: 'Paid' },
+    { value: 'overdue', label: 'Overdue' }
   ];
 
   useEffect(() => {
@@ -60,7 +79,8 @@ const Invoices = () => {
     if (window.confirm('Are you sure you want to delete this invoice?')) {
       try {
         await invoicesAPI.delete(id);
-        setInvoices(invoices.filter(invoice => invoice.id !== id));
+        setInvoices(invoices.filter(invoice => invoice._id !== id));
+        fetchInvoiceStats(); // Refresh stats
       } catch (err) {
         setError('Failed to delete invoice');
         console.error('Delete invoice error:', err);
@@ -68,13 +88,75 @@ const Invoices = () => {
     }
   };
 
+  // View Invoice Functions
+  const handleViewInvoice = (invoice) => {
+    setViewingInvoice(invoice);
+  };
+
+  const handleCloseView = () => {
+    setViewingInvoice(null);
+  };
+
+  // Edit Invoice Functions
+  const handleEditInvoice = (invoice) => {
+    setEditingInvoice(invoice._id);
+    setEditFormData({
+      customer_name: invoice.customer?.name || invoice.customer_name || '',
+      date: invoice.date ? new Date(invoice.date).toISOString().split('T')[0] : '',
+      due_date: invoice.due_date ? new Date(invoice.due_date).toISOString().split('T')[0] : '',
+      total_amount: invoice.total_amount || '',
+      status: invoice.status || 'pending'
+    });
+  };
+
+  const handleEditFormChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormData(prev => ({
+      ...prev,
+      [name]: name === 'total_amount' ? parseFloat(value) || 0 : value
+    }));
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await invoicesAPI.update(editingInvoice, editFormData);
+      setInvoices(invoices.map(invoice => 
+        invoice._id === editingInvoice ? { ...response.data, _id: editingInvoice } : invoice
+      ));
+      setEditingInvoice(null);
+      setEditFormData({
+        customer_name: '',
+        date: '',
+        due_date: '',
+        total_amount: '',
+        status: 'pending'
+      });
+      fetchInvoiceStats(); // Refresh stats after edit
+    } catch (err) {
+      setError('Failed to update invoice');
+      console.error('Update invoice error:', err);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingInvoice(null);
+    setEditFormData({
+      customer_name: '',
+      date: '',
+      due_date: '',
+      total_amount: '',
+      status: 'pending'
+    });
+  };
+
   const handleUpdateStatus = async (id, status) => {
     try {
       await invoicesAPI.updateStatus(id, status);
-      // Update local state
       setInvoices(invoices.map(invoice => 
-        invoice.id === id ? {...invoice, status} : invoice
+        invoice._id === id ? {...invoice, status} : invoice
       ));
+      fetchInvoiceStats(); // Refresh stats after status update
     } catch (err) {
       setError('Failed to update invoice status');
       console.error('Update invoice status error:', err);
@@ -97,11 +179,22 @@ const Invoices = () => {
     if (activeFilter === 'overdue' && invoice.status !== 'overdue') return false;
     
     // Filter by search query
-    if (searchQuery && !invoice.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !invoice.invoice_number.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (searchQuery) {
+      const searchLower = searchQuery.toLowerCase();
+      const customerName = invoice.customer?.name?.toLowerCase() || invoice.customer_name?.toLowerCase() || '';
+      const invoiceNumber = invoice.invoice_number?.toLowerCase() || '';
+      
+      if (!customerName.includes(searchLower) && !invoiceNumber.includes(searchLower)) {
+        return false;
+      }
+    }
     
     return true;
   });
+
+  const handleInvoice = () => {
+    navigate('/AddInvoice');
+  };
 
   if (loading) return <div className="p-6">Loading invoices...</div>;
   if (error) return <div className="p-6 text-red-500">{error}</div>;
@@ -119,7 +212,10 @@ const Invoices = () => {
             <FiPrinter className="mr-2" />
             Print
           </button>
-          <button className="flex items-center px-4 py-2 bg-primary border border-transparent rounded-md text-white hover:bg-secondary">
+          <button 
+            className="flex items-center px-4 py-2 bg-primary border border-transparent rounded-md text-white hover:bg-secondary bg-blue-600"
+            onClick={() => handleInvoice()}
+          >
             <FiPlus className="mr-2" />
             Create Invoice
           </button>
@@ -237,35 +333,127 @@ const Invoices = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredInvoices.map((invoice) => (
-                <tr key={invoice.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{invoice.invoice_number}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{invoice.customer_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(invoice.date).toLocaleDateString()}
+                <tr key={invoice._id}>
+                  {/* Invoice ID - Always visible */}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {invoice.invoice_number}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">₹{invoice.total_amount.toLocaleString()}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass(invoice.status)}`}>
-                      {invoice.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button className="text-blue-600 hover:text-blue-900 mr-3">
-                      <FiEye className="inline mr-1" /> View
-                    </button>
-                    <button className="text-primary hover:text-secondary mr-3">
-                      <FiEdit className="inline mr-1" /> Edit
-                    </button>
-                    <button 
-                      className="text-red-600 hover:text-red-900"
-                      onClick={() => handleDeleteInvoice(invoice.id)}
-                    >
-                      <FiTrash2 className="inline mr-1" /> Delete
-                    </button>
-                  </td>
+                  
+                  {editingInvoice === invoice._id ? (
+                    // Edit Form Row
+                    <>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="text"
+                          name="customer_name"
+                          value={editFormData.customer_name}
+                          onChange={handleEditFormChange}
+                          className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          required
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="date"
+                          name="date"
+                          value={editFormData.date}
+                          onChange={handleEditFormChange}
+                          className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          required
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="date"
+                          name="due_date"
+                          value={editFormData.due_date}
+                          onChange={handleEditFormChange}
+                          className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="number"
+                          name="total_amount"
+                          min="0"
+                          step="0.01"
+                          value={editFormData.total_amount}
+                          onChange={handleEditFormChange}
+                          className="w-24 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          required
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <select
+                          name="status"
+                          value={editFormData.status}
+                          onChange={handleEditFormChange}
+                          className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                        >
+                          {statusOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button 
+                          onClick={handleEditSubmit}
+                          className="text-green-600 hover:text-green-900 mr-3 bg-green-100 px-3 py-1 rounded"
+                        >
+                          <FiSave className="inline mr-1" /> Save
+                        </button>
+                        <button 
+                          onClick={handleCancelEdit}
+                          className="text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1 rounded"
+                        >
+                          <FiX className="inline mr-1" /> Cancel
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    // Normal Display Row
+                    <>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {invoice.customer?.name || invoice.customer_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(invoice.date).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        ₹{invoice.total_amount?.toLocaleString() || '0'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass(invoice.status)}`}>
+                          {invoice.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button 
+                          className="text-blue-600 hover:text-blue-900 mr-3 bg-blue-100 px-3 py-1 rounded"
+                          onClick={() => handleViewInvoice(invoice)}
+                        >
+                          <FiEye className="inline mr-1" /> View
+                        </button>
+                        <button 
+                          className="text-green-600 hover:text-green-900 mr-3 bg-green-100 px-3 py-1 rounded"
+                          onClick={() => handleEditInvoice(invoice)}
+                        >
+                          <FiEdit className="inline mr-1" /> Edit
+                        </button>
+                        <button 
+                          className="text-red-600 hover:text-red-900 bg-red-100 px-3 py-1 rounded"
+                          onClick={() => handleDeleteInvoice(invoice._id)}
+                        >
+                          <FiTrash2 className="inline mr-1" /> Delete
+                        </button>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -305,6 +493,103 @@ const Invoices = () => {
           </div>
         </div>
       </div>
+
+      {/* View Invoice Modal */}
+      {viewingInvoice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h2 className="text-xl font-bold text-gray-800">Invoice Details</h2>
+              <button 
+                onClick={handleCloseView}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <FiX className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <h3 className="font-semibold text-gray-700">Invoice Number</h3>
+                  <p className="text-gray-900">{viewingInvoice.invoice_number}</p>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-700">Status</h3>
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClass(viewingInvoice.status)}`}>
+                    {viewingInvoice.status}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-700">Customer</h3>
+                  <p className="text-gray-900">{viewingInvoice.customer?.name || viewingInvoice.customer_name}</p>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-700">Date</h3>
+                  <p className="text-gray-900">{new Date(viewingInvoice.date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-700">Due Date</h3>
+                  <p className="text-gray-900">
+                    {viewingInvoice.due_date ? new Date(viewingInvoice.due_date).toLocaleDateString() : '-'}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-700">Total Amount</h3>
+                  <p className="text-gray-900 font-bold">₹{viewingInvoice.total_amount?.toLocaleString() || '0'}</p>
+                </div>
+              </div>
+
+              {/* Invoice Items */}
+              {viewingInvoice.items && viewingInvoice.items.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="font-semibold text-gray-700 mb-3">Items</h3>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Item</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Quantity</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Price</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {viewingInvoice.items.map((item, index) => (
+                          <tr key={index}>
+                            <td className="px-4 py-2 text-sm text-gray-900">{item.name}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{item.quantity}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">₹{item.price}</td>
+                            <td className="px-4 py-2 text-sm text-gray-900">₹{(item.quantity * item.price).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={handleCloseView}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    handleEditInvoice(viewingInvoice);
+                    handleCloseView();
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Edit Invoice
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

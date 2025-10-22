@@ -8,7 +8,8 @@ const {
   updateExpense,
   deleteExpense,
   getExpenseStats,
-  getExpenseCategories
+  getExpenseCategories,
+
 } = require('../controllers/expenseController');
 const {
   createExpenseValidation,
@@ -26,5 +27,4 @@ router.put('/:id', auth, updateExpenseValidation, handleValidationErrors, update
 router.delete('/:id', auth, expenseIdValidation, handleValidationErrors, deleteExpense);
 router.get('/stats/overview', auth, expenseQueryValidation, handleValidationErrors, getExpenseStats);
 router.get('/categories/list', auth, getExpenseCategories);
-
 module.exports = router;

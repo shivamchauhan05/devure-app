@@ -1,14 +1,32 @@
 // pages/Inventory.js
 import React, { useState, useEffect } from 'react';
-import { FiPlus, FiFilter, FiDownload, FiPrinter, FiSearch, FiEdit, FiTrash2, FiPackage, FiAlertTriangle,FiDollarSign } from 'react-icons/fi';
+import { FiPlus, FiFilter, FiDownload, FiPrinter, FiSearch, FiEdit, FiTrash2, FiPackage, FiAlertTriangle, FiDollarSign } from 'react-icons/fi';
 import { inventoryAPI } from '../services/api';
+import AddProduct from '../forms/AddProduct';
+import { Navigate, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext';
 
 const Inventory = () => {
+  const navigate = useNavigate()
+  const { delet } = useAuth
+  
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [updateTrigger, setUpdateTrigger] = useState(Date.now());
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    category: '',
+    price: '',
+    cost: '',
+    stock: '',
+    min_stock: '',
+    description: ''
+  });
+  
   const [stats, setStats] = useState({
     totalProducts: 0,
     outOfStock: 0,
@@ -47,8 +65,9 @@ const Inventory = () => {
   const fetchInventoryStats = async () => {
     try {
       const response = await inventoryAPI.getStats();
+      console.log(response.data)
       setStats({
-        totalProducts: response.data.totalProducts || 0,
+        totalProducts: response.data.totalProducts || 2,
         outOfStock: response.data.outOfStockItems || 0,
         lowStock: response.data.lowStockItems || 0,
         totalValue: response.data.totalInventoryValue || 0
@@ -59,10 +78,12 @@ const Inventory = () => {
   };
 
   const handleDeleteProduct = async (id) => {
+    console.log(id)
     if (window.confirm('Are you sure you want to delete this product?')) {
       try {
-        await inventoryAPI.delete(id);
-        setProducts(products.filter(product => product.id !== id));
+        await inventoryAPI.delete(id)
+        setProducts(products.filter(product => product._id !== id));
+        fetchInventoryStats(); // Refresh stats after deletion
       } catch (err) {
         setError('Failed to delete product');
         console.error('Delete product error:', err);
@@ -72,15 +93,93 @@ const Inventory = () => {
 
   const handleUpdateStock = async (id, newStock) => {
     try {
+      console.log('1. Starting update - ID:', id, 'New Stock:', newStock);
+      console.log('2. Current products before API call:', products);
+      
       await inventoryAPI.updateStock(id, { stock: newStock });
+      console.log('3. API call completed successfully');
+      
       // Update local state
-      setProducts(products.map(product => 
-        product.id === id ? {...product, stock: newStock} : product
-      ));
+      setProducts(prevProducts => {
+        const updatedProducts = prevProducts.map(product => {
+          if (product._id === id) {
+            console.log('4. Found matching product, updating stock from', product.stock, 'to', newStock);
+            return {...product, stock: newStock};
+          }
+          return product;
+        });
+        
+        console.log('5. Updated products array:', updatedProducts);
+        return updatedProducts;
+      });
+      
+      fetchInventoryStats(); // Refresh stats after stock update
     } catch (err) {
+      console.log('6. Error occurred:', err);
       setError('Failed to update stock');
       console.error('Update stock error:', err);
     }
+  };
+
+  // Edit Product Functions
+  const handleEditClick = (product) => {
+    setEditingProduct(product._id);
+    setEditFormData({
+      name: product.name,
+      category: product.category,
+      price: product.price,
+      cost: product.cost || '',
+      stock: product.stock,
+      min_stock: product.min_stock || 5,
+      description: product.description || ''
+    });
+  };
+
+  const handleEditFormChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormData(prev => ({
+      ...prev,
+      [name]: name === 'price' || name === 'cost' || name === 'stock' || name === 'min_stock' 
+        ? parseFloat(value) || 0 
+        : value
+    }));
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await inventoryAPI.update(editingProduct, editFormData);
+      setProducts(products.map(product => 
+        product._id === editingProduct ? { ...response.data, _id: editingProduct } : product
+      ));
+      setEditingProduct(null);
+      setEditFormData({
+        name: '',
+        category: '',
+        price: '',
+        cost: '',
+        stock: '',
+        min_stock: '',
+        description: ''
+      });
+      fetchInventoryStats(); // Refresh stats after edit
+    } catch (err) {
+      setError('Failed to update product');
+      console.error('Update product error:', err);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProduct(null);
+    setEditFormData({
+      name: '',
+      category: '',
+      price: '',
+      cost: '',
+      stock: '',
+      min_stock: '',
+      description: ''
+    });
   };
 
   const statusClass = (stock, minStock) => {
@@ -111,6 +210,10 @@ const Inventory = () => {
   if (loading) return <div className="p-6">Loading inventory...</div>;
   if (error) return <div className="p-6 text-red-500">{error}</div>;
 
+  const setShowAddForm = () => {
+    navigate('/addProduct')
+  };
+
   return (
     <div className="p-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
@@ -124,7 +227,7 @@ const Inventory = () => {
             <FiPrinter className="mr-2" />
             Print
           </button>
-          <button className="flex items-center px-4 py-2 bg-primary border border-transparent rounded-md text-white hover:bg-secondary">
+          <button className="flex items-center px-4 py-2 bg-primary border border-transparent rounded-md text-white hover:bg-secondary bg-blue-600" onClick={() => setShowAddForm()}>
             <FiPlus className="mr-2" />
             Add Product
           </button>
@@ -249,37 +352,134 @@ const Inventory = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredProducts.map((product) => (
-                <tr key={product.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{product.id}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{product.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.category}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-20 px-2 py-1 border border-gray-300 rounded-md text-sm"
-                      value={product.stock}
-                      onChange={(e) => handleUpdateStock(product.id, parseInt(e.target.value))}
-                    />
+                <tr key={product._id}>
+                  {/* Product ID - Always visible in both modes */}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {product._id}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">₹{product.price.toLocaleString()}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{product.cost?.toLocaleString() || '0'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass(product.stock, product.min_stock)}`}>
-                      {statusText(product.stock, product.min_stock)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button className="text-primary hover:text-secondary mr-3">
-                      <FiEdit className="inline mr-1" /> Edit
-                    </button>
-                    <button 
-                      className="text-red-600 hover:text-red-900"
-                      onClick={() => handleDeleteProduct(product.id)}
-                    >
-                      <FiTrash2 className="inline mr-1" /> Delete
-                    </button>
-                  </td>
+                  
+                  {editingProduct === product._id ? (
+                    // Edit Form Row - Only editable fields
+                    <>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="text"
+                          name="name"
+                          value={editFormData.name}
+                          onChange={handleEditFormChange}
+                          className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          required
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <select
+                          name="category"
+                          value={editFormData.category}
+                          onChange={handleEditFormChange}
+                          className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          required
+                        >
+                          <option value="">Select Category</option>
+                          {categories.map(category => (
+                            <option key={category} value={category}>{category}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="number"
+                          name="stock"
+                          min="0"
+                          value={editFormData.stock}
+                          onChange={handleEditFormChange}
+                          className="w-20 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          required
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="number"
+                          name="price"
+                          min="0"
+                          step="0.01"
+                          value={editFormData.price}
+                          onChange={handleEditFormChange}
+                          className="w-24 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          required
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="number"
+                          name="cost"
+                          min="0"
+                          step="0.01"
+                          value={editFormData.cost}
+                          onChange={handleEditFormChange}
+                          className="w-24 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass(editFormData.stock, editFormData.min_stock)}`}>
+                          {statusText(editFormData.stock, editFormData.min_stock)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button 
+                          onClick={handleEditSubmit}
+                          className="text-green-600 hover:text-green-900 mr-3 bg-green-100 px-3 py-1 rounded"
+                        >
+                          Save
+                        </button>
+                        <button 
+                          onClick={handleCancelEdit}
+                          className="text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1 rounded"
+                        >
+                          Cancel
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    // Normal Display Row
+                    <>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{product.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.category}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <input
+                          type="number"
+                          min="0"
+                          className="w-20 px-2 py-1 border border-gray-300 rounded-md text-sm"
+                          value={product.stock}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value) || 0;
+                            console.log('Input changed - Product ID:', product._id, 'New value:', value);
+                            handleUpdateStock(product._id, value);
+                          }}
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">₹{product.price?.toLocaleString() || '0'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{product.cost?.toLocaleString() || '0'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass(product.stock, product.min_stock)}`}>
+                          {statusText(product.stock, product.min_stock)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <button 
+                          className="text-blue-600 hover:text-blue-900 mr-3 bg-blue-100 px-3 py-1 rounded"
+                          onClick={() => handleEditClick(product)}
+                        >
+                          <FiEdit className="inline mr-1" /> Edit
+                        </button>
+                        <button 
+                          className="text-red-600 hover:text-red-900 bg-red-100 px-3 py-1 rounded"
+                          onClick={() => handleDeleteProduct(product._id)}
+                        >
+                          <FiTrash2 className="inline mr-1" /> Delete
+                        </button>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>

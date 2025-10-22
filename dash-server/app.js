@@ -14,6 +14,9 @@ const expenseRoutes = require('./routes/expenses');
 const inventoryRoutes = require('./routes/inventory');
 const reportRoutes = require('./routes/reports');
 const settingsRoutes = require('./routes/settings');
+const exportRoutes = require('./routes/export');
+const importRoutes = require('./routes/import');
+
 
 const app = express();
 
@@ -32,6 +35,8 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/export', exportRoutes);
+app.use('/api/import', importRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

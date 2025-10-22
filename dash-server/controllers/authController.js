@@ -17,7 +17,7 @@ exports.register = async (req, res) => {
   try {
     const { name, email, password, business_name } = req.body;
     console.log(name,email,password)
-    
+    console.log(req.boby)
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Please enter all fields' });
     }
@@ -57,6 +57,7 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log(req.boby)
     
     if (!email || !password) {
       return res.status(400).json({ message: 'Please enter all fields' });
@@ -76,14 +77,18 @@ exports.login = async (req, res) => {
     
     // Generate token
     const token = generateToken(user._id);
-    console.log("hh")
     res.json({
       token,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
-        business_name: user.business_name
+        business_name: user.business_name,
+        address:user.address,
+        city:user.city,
+        phone:user.phone,
+        state:user.state,
+        zip_code:user.zip_code,
       }
     });
   } catch (error) {
@@ -98,5 +103,39 @@ exports.getCurrentUser = async (req, res) => {
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+// upadate current user
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id; // ✅ req.user._id ki jagah req.user.id use karo
+    const updateData = req.body;
+
+    console.log('Updating profile for user:', userId);
+    console.log('Update data:', updateData);
+
+    // Update user in database
+    const updatedUser = await User.findByIdAndUpdate(
+      userId, 
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.log('Profile updated successfully:', updatedUser);
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ 
+      message: 'Error updating profile', 
+      error: error.message 
+    });
   }
 };
